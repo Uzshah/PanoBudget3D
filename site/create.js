@@ -17,8 +17,7 @@ const LOW_MEMORY = (navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod
   || (navigator.deviceMemory ?? 8) <= 4;
 // Model input height (multiple of 14) and wrapped padding per side, chosen so
 // the padded width (2 × height + 2 × pad) is also a multiple of 14.
-const MODEL_INPUT = LOW_MEMORY ? {height: 364, pad: 91} : {height: 518, pad: 126};
-const MEMORY_MESSAGE = 'This device ran out of memory for the depth AI. Close other tabs and try again, or use a desktop browser.';
+const MODEL_INPUT = LOW_MEMORY ? {height: 252, pad: 63} : {height: 518, pad: 126};
 
 async function supportsF16() {
   try { return !!(await navigator.gpu?.requestAdapter())?.features.has('shader-f16'); }
@@ -30,6 +29,7 @@ async function runtimeCandidates() {
   const forced = new URLSearchParams(location.search).get('depth');
   const all = {'webgpu-fp16': ['webgpu', 'fp16', 'WebGPU'], 'webgpu-fp32': ['webgpu', 'fp32', 'WebGPU'], wasm: ['wasm', 'q8', 'WebAssembly']};
   if (all[forced]) return [all[forced]];
+  if (forced === 'none') return [];
   // Phones share memory between GPU and page; WebAssembly is the reliable path there.
   if (LOW_MEMORY) return [all.wasm];
   return (await supportsF16()) ? [all['webgpu-fp16'], all.wasm] : [all.wasm];
@@ -38,8 +38,9 @@ async function runtimeCandidates() {
 async function loadDepthModel(status, skipDevice) {
   if (depthPipeline && depthPipeline.deviceLabel !== skipDevice) return depthPipeline;
   status('Loading the depth AI (first time only, cached afterwards)…', 0);
-  const {pipeline, RawImage} = await import(TRANSFORMERS_URL);
+  const {pipeline, RawImage, env} = await import(TRANSFORMERS_URL);
   RawImageClass = RawImage;
+  if (LOW_MEMORY && env.backends?.onnx?.wasm) env.backends.onnx.wasm.numThreads = 1;
   let lastError;
   for (const [device, dtype, label] of await runtimeCandidates()) {
     if (label === skipDevice) continue;
@@ -47,6 +48,8 @@ async function loadDepthModel(status, skipDevice) {
     try {
       depthPipeline = await pipeline('depth-estimation', MODEL_ID, {
         device, dtype,
+        // Memory pools speed up repeated runs but reserve memory phones do not have.
+        session_options: LOW_MEMORY ? {enableCpuMemArena: false, enableMemPattern: false} : undefined,
         progress_callback: event => {
           if (event.status === 'progress' && event.total) {
             files.set(event.file, [event.loaded, event.total]);
@@ -60,7 +63,6 @@ async function loadDepthModel(status, skipDevice) {
       return depthPipeline;
     } catch (error) { console.warn(`Depth model unavailable on ${label}`, error); lastError = error; }
   }
-  if (/memory|no available backend/i.test(lastError?.message ?? '')) throw new Error(MEMORY_MESSAGE);
   throw lastError ?? new Error('No runtime is available for the depth AI in this browser.');
 }
 
@@ -154,10 +156,7 @@ const FRAGMENT_SHADER = `
   }
 `;
 
-export async function buildPhotoScene(source, status, {maxTextureSize = 4096, anisotropy = 1} = {}) {
-  const image = await normalizePanorama(source, status, Math.min(LOW_MEMORY ? 2048 : MAX_WIDTH, maxTextureSize));
-  const modelHeight = MODEL_INPUT.height, modelWidth = 2 * modelHeight, pad = MODEL_INPUT.pad;
-  const padded = paddedCanvas(image, modelWidth, modelHeight, pad);
+async function estimateDepth(padded, status) {
   let depth = await loadDepthModel(status), predicted, started;
   for (;;) {
     status(`Estimating depth on ${depth.deviceLabel}…`, null);
@@ -167,15 +166,29 @@ export async function buildPhotoScene(source, status, {maxTextureSize = 4096, an
     try { ({predicted_depth: predicted} = await depth(RawImageClass.fromCanvas(padded))); break; }
     catch (error) {
       // Some GPUs expose WebGPU but fail at inference; fall back to the CPU runtime.
-      if (depth.deviceLabel !== 'WebGPU') throw /memory/i.test(error?.message ?? '') ? new Error(MEMORY_MESSAGE) : error;
+      if (depth.deviceLabel !== 'WebGPU') throw error;
       console.warn('WebGPU depth inference failed, retrying on WebAssembly', error);
       depth = await loadDepthModel(status, 'WebGPU');
     }
   }
-  const inferenceSeconds = (performance.now() - started) / 1000;
   const [dh, dw] = predicted.dims.slice(-2);
   console.info(`Depth AI input ${padded.width}×${padded.height} → output ${dw}×${dh} on ${depth.deviceLabel}`);
-  const disparity = predicted.data;
+  return {disparity: predicted.data, dw, dh, device: depth.deviceLabel, seconds: (performance.now() - started) / 1000};
+}
+
+export async function buildPhotoScene(source, status, {maxTextureSize = 4096, anisotropy = 1} = {}) {
+  const image = await normalizePanorama(source, status, Math.min(LOW_MEMORY ? 2048 : MAX_WIDTH, maxTextureSize));
+  const modelHeight = MODEL_INPUT.height, modelWidth = 2 * modelHeight, pad = MODEL_INPUT.pad;
+  const padded = paddedCanvas(image, modelWidth, modelHeight, pad);
+  // Without depth (the AI cannot run on this device) the photo still becomes
+  // a plain 360° view: one constant depth, marked as low confidence.
+  let estimate = null, fallbackReason = null;
+  try { estimate = await estimateDepth(padded, status); }
+  catch (error) {
+    console.error('Depth AI unavailable', error);
+    fallbackReason = String(error?.message ?? error).slice(0, 140);
+  }
+  const {disparity, dw, dh} = estimate ?? {disparity: new Float32Array([1]), dw: 1, dh: 1};
 
   status('Building the 3D scene…', null);
   await new Promise(requestAnimationFrame);
@@ -265,7 +278,7 @@ export async function buildPhotoScene(source, status, {maxTextureSize = 4096, an
       positions[3 * v + 2] = -Math.cos(lon) * cosLat * d;
       uvs[2 * v] = vx / gw; uvs[2 * v + 1] = 1 - vy / gh;
       const edge = edgeSum / 4 / gradientScale;
-      const c = 0.05 + 0.55 * (1 / (1 + edge * edge)) * (0.55 + 0.45 * cosLat);
+      const c = fallbackReason ? 0.05 : 0.05 + 0.55 * (1 / (1 + edge * edge)) * (0.55 + 0.45 * cosLat);
       confidence[v] = c;
       evidence[v] = Math.round(255 * c);
       empty[v] = black === 4 ? 1 : 0;
@@ -296,6 +309,6 @@ export async function buildPhotoScene(source, status, {maxTextureSize = 4096, an
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
-  return {mesh, evidence, inferenceSeconds, device: depth.deviceLabel,
+  return {mesh, evidence, inferenceSeconds: estimate?.seconds ?? 0, device: estimate?.device ?? 'none', fallbackReason,
     vertices: vw * vh, textureWidth: image.width};
 }

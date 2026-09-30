@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {SparkRenderer, SplatMesh, SparkControls, dyno} from '@sparkjsdev/spark';
-import {buildPhotoScene} from './create.js?v=20260930g';
+import {buildPhotoScene} from './create.js?v=20260930h';
 
 const $ = id => document.getElementById(id);
 const requestedScene = new URLSearchParams(location.search).get('scene') || 'hotel_0';
@@ -26,8 +26,10 @@ const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 1
 const renderer = new THREE.WebGLRenderer({canvas, antialias: false});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
-const spark = new SparkRenderer({renderer});
-scene.add(spark);
+// Photo scenes need no splat renderer; skipping it keeps Spark's sorting
+// workers from reserving memory the depth AI needs on phones.
+const spark = config.custom ? null : new SparkRenderer({renderer});
+if (spark) scene.add(spark);
 const controls = new SparkControls({canvas});
 controls.fpsMovement && (controls.fpsMovement.moveSpeed = 0.3);
 
@@ -65,7 +67,7 @@ function toast(message) {
   $('toast').textContent = message;
   $('toast').classList.add('visible');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 4500);
+  toastTimer = setTimeout(() => $('toast').classList.remove('visible'), Math.max(4500, 70 * message.length));
 }
 function validPose(pose) {
   return pose && Array.isArray(pose.position) && pose.position.length === 3
@@ -181,7 +183,7 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
 let evidence = null, evidenceHistogramCache = null;
 let budgetPercent = 100, lensTarget = 0;
 let quality = null;
-fetch('quality.json?v=20260930g').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+fetch('quality.json?v=20260930h').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
 function loadStatus(message, fraction) {
   $('load-detail').textContent = message;
@@ -292,7 +294,8 @@ mesh.initialized.then(async () => {
   $('count').textContent = `${fullCount.toLocaleString()} stored`;
   $('budget').disabled = false;
   updateBudgetUI();
-  if (photoResult) toast(`Depth estimated by AI on ${photoResult.device} in ${photoResult.inferenceSeconds.toFixed(1)} s. Drag to look around, W/A/S/D to step inside.`);
+  if (photoResult?.fallbackReason) toast(`The depth AI could not run on this device, so this is a flat 360° view. Open it on a desktop for 3D. (${photoResult.fallbackReason})`);
+  else if (photoResult) toast(`Depth estimated by AI on ${photoResult.device} in ${photoResult.inferenceSeconds.toFixed(1)} s. Drag to look around, W/A/S/D to step inside.`);
   try {
     await loadEvidence();
     $('lens').disabled = false;
