@@ -1,0 +1,24 @@
+{
+  "scope": "Opening-view browser screenshot crop rows 100:480, 1280 pixel width. SPZ versus original PLY, not held-out scene quality; functional headless software-renderer check, not a performance benchmark.",
+  "all_scenes_load": true,
+  "all_tours_play": true,
+  "separate_scene_storage": true,
+  "javascript_errors": [],
+  "views": [
+    {
+      "scene": "hotel_0",
+      "central_viewport_psnr_vs_ply_db": 35.112702023840484,
+      "mean_absolute_rgb_difference_0_to_255": 3.1242674067982454
+    },
+    {
+      "scene": "room_0",
+      "central_viewport_psnr_vs_ply_db": 37.86433604874111,
+      "mean_absolute_rgb_difference_0_to_255": 2.3138706140350878
+    },
+    {
+      "scene": "apartment_0",
+      "central_viewport_psnr_vs_ply_db": 37.23852789980149,
+      "mean_absolute_rgb_difference_0_to_255": 2.401398711622807
+    }
+  ]
+}
