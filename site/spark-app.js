@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {SparkRenderer, SplatMesh, SparkControls, dyno} from '@sparkjsdev/spark';
-import {buildSplatsFromPanorama} from './create.js?v=20260930d';
+import {buildSplatsFromPanorama} from './create.js?v=20260930e';
 
 const $ = id => document.getElementById(id);
 const requestedScene = new URLSearchParams(location.search).get('scene') || 'hotel_0';
@@ -181,7 +181,7 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
 let evidence = null, evidenceHistogramCache = null;
 let budgetPercent = 100, lensTarget = 0;
 let quality = null;
-fetch('quality.json?v=20260930d').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+fetch('quality.json?v=20260930e').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
 function loadStatus(message, fraction) {
   $('load-detail').textContent = message;

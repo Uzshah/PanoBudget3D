@@ -52,23 +52,52 @@ async function loadDepthModel(status, skipDevice) {
   throw lastError ?? new Error('No runtime is available for the depth AI in this browser.');
 }
 
-function loadImage(source) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('This file could not be read as an image.'));
-    image.src = source;
-  });
+const MAX_WIDTH = 2048;
+
+// Decodes any upload at most MAX_WIDTH wide (so 8K–16K files stay cheap),
+// then returns a 2:1 equirectangular canvas. Near-2:1 images are stretched;
+// wider ones (partial vertical coverage) are centred with empty bands.
+async function normalizePanorama(source, status) {
+  status('Preparing your photo…', null);
+  const blob = await (await fetch(source)).blob();
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob, {resizeWidth: MAX_WIDTH, resizeQuality: 'high'});
+  } catch {
+    try { bitmap = await createImageBitmap(blob); }
+    catch { throw new Error('This file could not be read as an image (JPEG, PNG or WebP work best).'); }
+  }
+  const aspect = bitmap.width / bitmap.height;
+  if (aspect < 1.8) {
+    bitmap.close?.();
+    throw new Error('This does not look like a 360° panorama. Use an equirectangular image about twice as wide as it is tall.');
+  }
+  const width = Math.min(MAX_WIDTH, bitmap.width) & ~1, height = width / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingQuality = 'high';
+  if (aspect <= 2.2) ctx.drawImage(bitmap, 0, 0, width, height);
+  else {
+    const band = Math.round(width / aspect);
+    ctx.drawImage(bitmap, 0, Math.round((height - band) / 2), width, band);
+  }
+  bitmap.close?.();
+  return canvas;
 }
 
-// Pads the panorama with wrapped strips so the model sees across the seam.
+// Scales the panorama to the model size, with wrapped strips on both sides
+// so the model sees across the 0°/360° seam.
 function paddedCanvas(image, width, height, pad) {
   const canvas = document.createElement('canvas');
   canvas.width = width + 2 * pad; canvas.height = height;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(image, 0, 0, width, height, pad, 0, width, height);
-  ctx.drawImage(image, width - pad, 0, pad, height, 0, 0, pad, height);
-  ctx.drawImage(image, 0, 0, pad, height, pad + width, 0, pad, height);
+  const sw = image.width, sh = image.height, strip = sw * pad / width;
+  ctx.drawImage(image, 0, 0, sw, sh, pad, 0, width, height);
+  ctx.drawImage(image, sw - strip, 0, strip, sh, 0, 0, pad, height);
+  ctx.drawImage(image, 0, 0, strip, sh, pad + width, 0, pad, height);
   return canvas;
 }
 
@@ -106,10 +135,7 @@ function basisQuaternion(m00, m01, m02, m10, m11, m12, m20, m21, m22, out) {
 }
 
 export async function buildSplatsFromPanorama(packedSplats, source, status) {
-  const image = await loadImage(source);
-  if (Math.abs(image.naturalWidth / image.naturalHeight - 2) > 0.1) {
-    throw new Error(`A 360° photo is twice as wide as it is tall; this one is ${image.naturalWidth}×${image.naturalHeight}.`);
-  }
+  const image = await normalizePanorama(source, status);
   const modelWidth = 1036, modelHeight = 518, pad = 126;
   const padded = paddedCanvas(image, modelWidth, modelHeight, pad);
   let depth = await loadDepthModel(status), predicted, started;
@@ -130,7 +156,7 @@ export async function buildSplatsFromPanorama(packedSplats, source, status) {
 
   status('Building 3D Gaussians…', null);
   await new Promise(requestAnimationFrame);
-  const gw = Math.min(GRID_WIDTH, image.naturalWidth), gh = gw / 2;
+  const gw = Math.min(GRID_WIDTH, image.width), gh = gw / 2;
   const colorCanvas = document.createElement('canvas');
   colorCanvas.width = gw; colorCanvas.height = gh;
   const colorContext = colorCanvas.getContext('2d', {willReadFrequently: true});
