@@ -34,7 +34,7 @@ kbd { font:10px ui-monospace,monospace; border:1px solid #c4d3b74a; border-radiu
 .metrics dt { font-size:9.5px; color:#9aaa91; letter-spacing:.04em; }
 .metrics dd { margin:3px 0 0; font-size:13px; font-weight:550; font-variant-numeric:tabular-nums; }
 @media(max-width:900px) { #lab { top:auto; bottom:128px; left:10px; width:min(300px,calc(100% - 20px)); max-height:calc(100vh - 250px); } }
-@media(max-width:600px) { #lab { bottom:112px; } }
+@media(max-width:600px) { #lab { bottom:146px; max-height:calc(100vh - 290px); } }
 
 #create { max-width:440px; text-align:center; margin-top:18px; }
 #create p { font-size:13px; line-height:1.6; color:#c4cfbd; }
