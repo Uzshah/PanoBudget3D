@@ -43,3 +43,4 @@ kbd { font:10px ui-monospace,monospace; border:1px solid #c4d3b74a; border-radiu
 .file-button input { position:absolute; width:1px; height:1px; opacity:0; }
 .file-button:focus-within { outline:2px solid #e2f2b8; outline-offset:3px; }
 #create .create-hint { font-size:11px; color:#9aaa91; }
+@media(max-width:600px) { #toast { bottom:auto; top:118px; width:calc(100% - 32px); text-align:center; } }

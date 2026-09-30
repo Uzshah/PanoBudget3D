@@ -11,6 +11,15 @@ const NEAR = 0.8, FAR = 9;
 
 let depthPipeline = null, RawImageClass = null;
 
+// Phones and small-memory devices get a smaller model input and texture: the
+// depth model's attention memory grows with the square of its token count.
+const LOW_MEMORY = (navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent))
+  || (navigator.deviceMemory ?? 8) <= 4;
+// Model input height (multiple of 14) and wrapped padding per side, chosen so
+// the padded width (2 × height + 2 × pad) is also a multiple of 14.
+const MODEL_INPUT = LOW_MEMORY ? {height: 364, pad: 91} : {height: 518, pad: 126};
+const MEMORY_MESSAGE = 'This device ran out of memory for the depth AI. Close other tabs and try again, or use a desktop browser.';
+
 async function supportsF16() {
   try { return !!(await navigator.gpu?.requestAdapter())?.features.has('shader-f16'); }
   catch { return false; }
@@ -21,6 +30,8 @@ async function runtimeCandidates() {
   const forced = new URLSearchParams(location.search).get('depth');
   const all = {'webgpu-fp16': ['webgpu', 'fp16', 'WebGPU'], 'webgpu-fp32': ['webgpu', 'fp32', 'WebGPU'], wasm: ['wasm', 'q8', 'WebAssembly']};
   if (all[forced]) return [all[forced]];
+  // Phones share memory between GPU and page; WebAssembly is the reliable path there.
+  if (LOW_MEMORY) return [all.wasm];
   return (await supportsF16()) ? [all['webgpu-fp16'], all.wasm] : [all.wasm];
 }
 
@@ -49,6 +60,7 @@ async function loadDepthModel(status, skipDevice) {
       return depthPipeline;
     } catch (error) { console.warn(`Depth model unavailable on ${label}`, error); lastError = error; }
   }
+  if (/memory|no available backend/i.test(lastError?.message ?? '')) throw new Error(MEMORY_MESSAGE);
   throw lastError ?? new Error('No runtime is available for the depth AI in this browser.');
 }
 
@@ -143,23 +155,26 @@ const FRAGMENT_SHADER = `
 `;
 
 export async function buildPhotoScene(source, status, {maxTextureSize = 4096, anisotropy = 1} = {}) {
-  const image = await normalizePanorama(source, status, Math.min(MAX_WIDTH, maxTextureSize));
-  const modelWidth = 1036, modelHeight = 518, pad = 126;
+  const image = await normalizePanorama(source, status, Math.min(LOW_MEMORY ? 2048 : MAX_WIDTH, maxTextureSize));
+  const modelHeight = MODEL_INPUT.height, modelWidth = 2 * modelHeight, pad = MODEL_INPUT.pad;
   const padded = paddedCanvas(image, modelWidth, modelHeight, pad);
   let depth = await loadDepthModel(status), predicted, started;
   for (;;) {
     status(`Estimating depth on ${depth.deviceLabel}…`, null);
     started = performance.now();
+    // The processor would otherwise rescale to its default 518 px short side.
+    depth.processor.image_processor.size = {width: padded.width, height: padded.height};
     try { ({predicted_depth: predicted} = await depth(RawImageClass.fromCanvas(padded))); break; }
     catch (error) {
       // Some GPUs expose WebGPU but fail at inference; fall back to the CPU runtime.
-      if (depth.deviceLabel !== 'WebGPU') throw error;
+      if (depth.deviceLabel !== 'WebGPU') throw /memory/i.test(error?.message ?? '') ? new Error(MEMORY_MESSAGE) : error;
       console.warn('WebGPU depth inference failed, retrying on WebAssembly', error);
       depth = await loadDepthModel(status, 'WebGPU');
     }
   }
   const inferenceSeconds = (performance.now() - started) / 1000;
   const [dh, dw] = predicted.dims.slice(-2);
+  console.info(`Depth AI input ${padded.width}×${padded.height} → output ${dw}×${dh} on ${depth.deviceLabel}`);
   const disparity = predicted.data;
 
   status('Building the 3D scene…', null);
