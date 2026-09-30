@@ -169,7 +169,7 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
 let evidence = null, evidenceHistogramCache = null;
 let budgetPercent = 100, lensTarget = 0;
 let quality = null;
-fetch('quality.json').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+fetch('quality.json?v=20260930b').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
 const mesh = new SplatMesh({
   url: config.asset, enableLod: false,
