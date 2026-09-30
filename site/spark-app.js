@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {SparkRenderer, SplatMesh, SparkControls, dyno} from '@sparkjsdev/spark';
-import {buildSplatsFromPanorama} from './create.js?v=20260930e';
+import {buildPhotoScene} from './create.js?v=20260930f';
 
 const $ = id => document.getElementById(id);
 const requestedScene = new URLSearchParams(location.search).get('scene') || 'hotel_0';
@@ -181,7 +181,7 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
 let evidence = null, evidenceHistogramCache = null;
 let budgetPercent = 100, lensTarget = 0;
 let quality = null;
-fetch('quality.json?v=20260930e').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+fetch('quality.json?v=20260930f').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
 function loadStatus(message, fraction) {
   $('load-detail').textContent = message;
@@ -189,9 +189,12 @@ function loadStatus(message, fraction) {
   else $('load-progress').value = fraction;
 }
 // Waits for the visitor to pick a photo (file, drop or sample), then builds it.
-async function createFromPhoto(splats) {
+async function createFromPhoto() {
   $('loading-title').textContent = 'Step into your photo.';
   $('status-text').textContent = 'Built in your browser from one 360° photo';
+  $('budget-section').hidden = true;
+  $('lab-eyebrow').textContent = 'AI EVIDENCE';
+  document.querySelector('#lab .lab-copy').innerHTML = 'Colors the scene by how reliable the AI depth is. Depth edges, where the surface is stretched between near and far objects, read as weak. Press <kbd>L</kbd>.';
   $('create').hidden = false;
   loadStatus('', 0);
   for (;;) {
@@ -203,7 +206,10 @@ async function createFromPhoto(splats) {
     });
     $('create').hidden = true;
     try {
-      const result = await buildSplatsFromPanorama(splats, source, loadStatus);
+      const result = await buildPhotoScene(source, loadStatus, {
+        maxTextureSize: renderer.capabilities.maxTextureSize,
+        anisotropy: renderer.capabilities.getMaxAnisotropy(),
+      });
       document.body.ondrop = document.body.ondragover = null;
       return result;
     } catch (error) {
@@ -214,10 +220,27 @@ async function createFromPhoto(splats) {
   }
 }
 let photoResult = null;
-const mesh = config.custom ? new SplatMesh({
-  enableLod: false,
-  constructSplats: async splats => { photoResult = await createFromPhoto(splats); },
-}) : new SplatMesh({
+const unitName = config.custom ? 'surface points' : 'Gaussians';
+// A photo scene is a depth-displaced mesh textured with the full-resolution
+// photo; this group stands in for the few SplatMesh members the viewer uses.
+function photoSceneGroup() {
+  const group = new THREE.Group();
+  group.numSplats = 0;
+  group.initialized = createFromPhoto().then(result => {
+    photoResult = result;
+    group.add(result.mesh);
+    group.numSplats = result.vertices;
+  });
+  group.updateVersion = () => {
+    const uniforms = photoResult?.mesh.material.uniforms;
+    if (!uniforms) return;
+    uniforms.lens.value = lensAmount.value;
+    uniforms.minConfidence.value = minConfidence.value;
+  };
+  group.updateGenerator = () => {};
+  return group;
+}
+const mesh = config.custom ? photoSceneGroup() : new SplatMesh({
   url: config.asset, enableLod: false,
   onProgress(event) {
     if (event.lengthComputable && event.total) {
@@ -269,7 +292,7 @@ mesh.initialized.then(async () => {
   $('count').textContent = `${fullCount.toLocaleString()} stored`;
   $('budget').disabled = false;
   updateBudgetUI();
-  if (photoResult) toast(`Depth estimated by AI on ${photoResult.device} in ${photoResult.inferenceSeconds.toFixed(1)} s · ${fullCount.toLocaleString()} Gaussians. Press Play to look around.`);
+  if (photoResult) toast(`Depth estimated by AI on ${photoResult.device} in ${photoResult.inferenceSeconds.toFixed(1)} s. Drag to look around, W/A/S/D to step inside.`);
   try {
     await loadEvidence();
     $('lens').disabled = false;
@@ -356,8 +379,8 @@ function updateTrustUI() {
   const limit = Math.floor(fullCount * budgetPercent / 100);
   const hidden = hiddenBelow(threshold, limit);
   $('trust-stat').textContent = threshold > 0
-    ? `${hidden.toLocaleString()} low-confidence Gaussians hidden (${(100 * hidden / Math.max(1, limit)).toFixed(1)}%)`
-    : `Median confidence ${(medianConfidence() / 255).toFixed(2)} across ${fullCount.toLocaleString()} Gaussians`;
+    ? `${hidden.toLocaleString()} low-confidence ${unitName} hidden (${(100 * hidden / Math.max(1, limit)).toFixed(1)}%)`
+    : `Median confidence ${(medianConfidence() / 255).toFixed(2)} across ${fullCount.toLocaleString()} ${unitName}`;
   $('drawn').textContent = drawnCount().toLocaleString();
 }
 function medianConfidence() {
@@ -397,7 +420,9 @@ renderer.setAnimationLoop(time => {
   frames++;
   if (time - lastStat >= 1000) {
     $('fps').textContent = `${(frames * 1000 / (time - lastStat)).toFixed(0)} fps`;
-    $('count').textContent = ready ? `${fullCount.toLocaleString()} Gaussians stored · ${budgetPercent}% render budget` : 'Loading scene…';
+    $('count').textContent = !ready ? 'Loading scene…' : photoResult
+      ? `Depth mesh · ${photoResult.textureWidth}×${photoResult.textureWidth / 2} photo texture`
+      : `${fullCount.toLocaleString()} Gaussians stored · ${budgetPercent}% render budget`;
     $('pose-readout').textContent = `Position ${camera.position.toArray().map(x => x.toFixed(3)).join(', ')} · Rotation ${camera.quaternion.toArray().map(x => x.toFixed(3)).join(', ')}`;
     frames = 0; lastStat = time;
   }

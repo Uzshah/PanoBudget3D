@@ -6,7 +6,7 @@ Explore 3D rooms reconstructed from a few 360° photos, see where the reconstruc
 
 ## Features
 
-- **Create from your own 360° photo:** choose **＋ Your 360° photo** (or **Try a sample**). Depth Anything V2 runs in the browser (WebGPU, or WebAssembly as a fallback) and turns the panorama into about 360k Gaussians you can walk into, in roughly 15 seconds. The photo never leaves your device. The evidence lens then shows where the estimated depth is unreliable, such as object edges.
+- **Create from your own 360° photo:** choose **＋ Your 360° photo** (or **Try a sample**). Any size of panorama works; it is resized on your device. Depth Anything V2 runs in the browser (WebGPU, or WebAssembly as a fallback) and shapes a 3D mesh textured with the photo at up to 4096×2048, so it stays sharp while you walk around. It takes about 15 seconds, and the photo never leaves your device. The evidence lens shows where the estimated depth is unreliable (object edges), and the confidence slider removes those stretched regions.
 - **Explore:** four indoor scenes (Hotel 0, Room 0, Apartment 0, Office 2) as Gaussian splats with full view-dependent color. Drag to look; W/A/S/D to move.
 - **Evidence lens:** colors every Gaussian by the confidence the reconstruction AI gave it, from red (weak) to blue (strong). Press <kbd>L</kbd>. The **Hide below confidence** slider removes uncertain geometry live.
 - **Render budget:** draw 10–100% of the Gaussians. The most visually important Gaussians are drawn first, so the room keeps its structure on low-end devices. The panel shows the measured image quality (PSNR) for each budget.
@@ -50,7 +50,7 @@ Open http://localhost:8765/. No build step or API key is needed.
 | Path | Contents |
 | --- | --- |
 | `site/` | The browser tool (`spark-app.js`, `index.html`, `spark.css`), scene assets and measured quality |
-| `site/create.js` | In-browser photo → depth → Gaussian pipeline |
+| `site/create.js` | In-browser photo → depth → textured 3D mesh pipeline |
 | `tools/export_ranked_assets.py` | Ranks the Gaussians and writes the SPZ scene and confidence files |
 | `tools/budget_rank_eval.py` | Measures held-out quality at each budget |
 | `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages |
