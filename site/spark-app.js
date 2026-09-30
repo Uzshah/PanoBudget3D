@@ -195,8 +195,13 @@ async function loadEvidence() {
   const height = Math.ceil(texels / EVIDENCE_WIDTH);
   const data = new Uint8Array(EVIDENCE_WIDTH * height * 4);
   data.set(bytes);
-  evidenceTexture.image = {data, width: EVIDENCE_WIDTH, height};
-  evidenceTexture.needsUpdate = true;
+  // WebGL2 textures have immutable storage, so the 1x1 placeholder cannot be
+  // resized once uploaded; bind a new texture of the right size instead.
+  const texture = new THREE.DataTexture(data, EVIDENCE_WIDTH, height, THREE.RGBAIntegerFormat, THREE.UnsignedByteType);
+  texture.internalFormat = 'RGBA8UI';
+  texture.needsUpdate = true;
+  evidenceSampler.value = texture;
+  evidenceTexture.dispose();
   evidence = bytes;
 }
 function hiddenBelow(threshold, limit) {
