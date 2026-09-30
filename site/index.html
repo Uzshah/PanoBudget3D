@@ -4,13 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>PanoBudget3D · Hotel tour</title>
-  <link rel="stylesheet" href="spark.css?v=20260930b">
+  <link rel="stylesheet" href="spark.css?v=20260930c">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/postprocessing/Pass.js":"./vendor/Pass.js","@sparkjsdev/spark":"./vendor/spark.module.js"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Interactive Gaussian scene"></canvas>
-  <header><div><span class="eyebrow">FROM PANORAMAS TO PRESENCE</span><h1>PanoBudget3D<span id="scene-name"> / Hotel 0</span></h1></div><label class="scene-select">Explore <select id="scene-picker" aria-label="Choose a scene"><option value="hotel_0">Hotel 0</option><option value="room_0">Room 0</option><option value="apartment_0">Apartment 0</option><option value="office_2">Office 2</option></select></label><button id="settings-toggle" aria-expanded="false" aria-controls="settings">Studio controls</button></header>
-  <div id="loading" role="status"><div class="loader-mark">P</div><h2>Step inside.</h2><p id="load-detail">Loading the scene…</p><progress id="load-progress" max="1"></progress></div>
+  <header><div><span class="eyebrow">FROM PANORAMAS TO PRESENCE</span><h1>PanoBudget3D<span id="scene-name"> / Hotel 0</span></h1></div><label class="scene-select">Explore <select id="scene-picker" aria-label="Choose a scene"><option value="hotel_0">Hotel 0</option><option value="room_0">Room 0</option><option value="apartment_0">Apartment 0</option><option value="office_2">Office 2</option><option value="custom">＋ Your 360° photo</option></select></label><button id="settings-toggle" aria-expanded="false" aria-controls="settings">Studio controls</button></header>
+  <div id="loading" role="status"><div class="loader-mark">P</div><h2 id="loading-title">Step inside.</h2><p id="load-detail">Loading the scene…</p><progress id="load-progress" max="1"></progress>
+    <div id="create" hidden>
+      <p>Turn a single 360° photo into a 3D space you can walk into. A depth AI runs on your device; the photo never leaves your browser.</p>
+      <div class="create-actions"><label class="primary file-button">Choose 360° photo<input id="pano-file" type="file" accept="image/*"></label><button id="pano-sample">Try a sample</button></div>
+      <p class="create-hint">Equirectangular image, twice as wide as tall. You can also drop it on this page.</p>
+    </div>
+  </div>
   <aside id="settings" hidden>
     <div class="eyebrow">YOUR VIEW. YOUR TOUR.</div><h2>Camera studio</h2>
     <p>Drag to look. W/A/S/D to move. Q/E to roll. Shift moves faster.</p>
@@ -49,8 +55,8 @@
   </aside>
   <footer>
     <div class="tour-row"><button id="play" class="primary" disabled>Play guided tour</button><button id="restart" title="Restart tour" disabled>↺</button><input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Tour position" disabled><output id="tour-time">0:00 / 0:42</output><button id="fullscreen" title="Fullscreen">⛶</button></div>
-    <div class="status-row"><span><i class="status-dot"></i> Full view-dependent color</span><span id="count">Loading scene…</span></div>
+    <div class="status-row"><span><i class="status-dot"></i> <span id="status-text">Full view-dependent color</span></span><span id="count">Loading scene…</span></div>
   </footer>
-  <script src="scene_data.js?v=20260930b"></script><script type="module" src="spark-app.js?v=20260930b"></script>
+  <script src="scene_data.js?v=20260930c"></script><script type="module" src="spark-app.js?v=20260930c"></script>
 </body>
 </html>

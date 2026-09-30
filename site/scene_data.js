@@ -2,8 +2,8 @@ window.PANOBUDGET_SCENES = {
   "hotel_0": {
     "id": "hotel_0_rand",
     "label": "Hotel 0",
-    "asset": "assets/hotel_0_ranked.spz?v=20260930b",
-    "evidence": "assets/hotel_0_evidence.bin?v=20260930b",
+    "asset": "assets/hotel_0_ranked.spz?v=20260930c",
+    "evidence": "assets/hotel_0_evidence.bin?v=20260930c",
     "heading": 3.2,
     "cameras": [
       {
@@ -341,8 +341,8 @@ window.PANOBUDGET_SCENES = {
   "room_0": {
     "id": "room_0_rand",
     "label": "Room 0",
-    "asset": "assets/room_0_ranked.spz?v=20260930b",
-    "evidence": "assets/room_0_evidence.bin?v=20260930b",
+    "asset": "assets/room_0_ranked.spz?v=20260930c",
+    "evidence": "assets/room_0_evidence.bin?v=20260930c",
     "heading": 3.2,
     "cameras": [
       {
@@ -729,8 +729,8 @@ window.PANOBUDGET_SCENES = {
   "apartment_0": {
     "id": "apartment_0_rand",
     "label": "Apartment 0",
-    "asset": "assets/apartment_0_ranked.spz?v=20260930b",
-    "evidence": "assets/apartment_0_evidence.bin?v=20260930b",
+    "asset": "assets/apartment_0_ranked.spz?v=20260930c",
+    "evidence": "assets/apartment_0_evidence.bin?v=20260930c",
     "heading": 3.2,
     "cameras": [
       {
@@ -1117,8 +1117,8 @@ window.PANOBUDGET_SCENES = {
   "office_2": {
     "id": "office_2_rand",
     "label": "Office 2",
-    "asset": "assets/office_2_ranked.spz?v=20260930b",
-    "evidence": "assets/office_2_evidence.bin?v=20260930b",
+    "asset": "assets/office_2_ranked.spz?v=20260930c",
+    "evidence": "assets/office_2_evidence.bin?v=20260930c",
     "heading": 0.3,
     "cameras": [
       {

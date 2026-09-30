@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import {SparkRenderer, SplatMesh, SparkControls, dyno} from '@sparkjsdev/spark';
+import {buildSplatsFromPanorama} from './create.js?v=20260930c';
 
 const $ = id => document.getElementById(id);
 const requestedScene = new URLSearchParams(location.search).get('scene') || 'hotel_0';
-const sceneKey = Object.hasOwn(window.PANOBUDGET_SCENES, requestedScene) ? requestedScene : 'hotel_0';
-const config = window.PANOBUDGET_SCENES[sceneKey];
+const CUSTOM_SCENE = {id: 'custom_360', label: 'Your 360° photo', cameras: [], heading: 0, storageKey: 'panobudget-custom-360-v1', custom: true};
+const sceneKey = requestedScene === 'custom' ? 'custom'
+  : Object.hasOwn(window.PANOBUDGET_SCENES, requestedScene) ? requestedScene : 'hotel_0';
+const config = sceneKey === 'custom' ? CUSTOM_SCENE : window.PANOBUDGET_SCENES[sceneKey];
 const storageKey = config.storageKey;
 $('scene-picker').value = sceneKey;
 $('scene-name').textContent = ` / ${config.label}`;
@@ -42,8 +45,17 @@ function levelPose(source, heading) {
   sampleCamera.lookAt(position[0] + rotated[0], position[1] - rotated[1], position[2] - rotated[2]);
   return {position, quaternion: sampleCamera.quaternion.toArray(), fov: 75};
 }
+function panPose(heading) {
+  sampleCamera.position.set(0, 0, 0);
+  sampleCamera.up.set(0, 1, 0);
+  sampleCamera.lookAt(Math.sin(heading), -0.08, -Math.cos(heading));
+  return {position: [0, 0, 0], quaternion: sampleCamera.quaternion.toArray(), fov: 75};
+}
 const trainingCameras = config.cameras;
-const defaultStops = trainingCameras.map((pose, index) => levelPose(pose, config.heading + index * Math.PI * 2 / (trainingCameras.length - 1)));
+// A photo scene has one capture point, so its default tour pans around it.
+const defaultStops = config.custom
+  ? [0, 1, 2, 3, 4, 5].map(index => panPose(index * Math.PI / 3))
+  : trainingCameras.map((pose, index) => levelPose(pose, config.heading + index * Math.PI * 2 / (trainingCameras.length - 1)));
 // Finish at the starting capture center, so restarting does not jump across the room.
 defaultStops.push(structuredClone(defaultStops[0]));
 let stops = structuredClone(defaultStops);
@@ -169,9 +181,43 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
 let evidence = null, evidenceHistogramCache = null;
 let budgetPercent = 100, lensTarget = 0;
 let quality = null;
-fetch('quality.json?v=20260930b').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+fetch('quality.json?v=20260930c').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
-const mesh = new SplatMesh({
+function loadStatus(message, fraction) {
+  $('load-detail').textContent = message;
+  if (fraction === null) $('load-progress').removeAttribute('value');
+  else $('load-progress').value = fraction;
+}
+// Waits for the visitor to pick a photo (file, drop or sample), then builds it.
+async function createFromPhoto(splats) {
+  $('loading-title').textContent = 'Step into your photo.';
+  $('status-text').textContent = 'Built in your browser from one 360° photo';
+  $('create').hidden = false;
+  loadStatus('', 0);
+  for (;;) {
+    const source = await new Promise(resolve => {
+      $('pano-file').onchange = event => { const file = event.target.files[0]; if (file) resolve(URL.createObjectURL(file)); event.target.value = ''; };
+      $('pano-sample').onclick = () => resolve('samples/living_room_360.jpg');
+      document.body.ondragover = event => event.preventDefault();
+      document.body.ondrop = event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) resolve(URL.createObjectURL(file)); };
+    });
+    $('create').hidden = true;
+    try {
+      const result = await buildSplatsFromPanorama(splats, source, loadStatus);
+      document.body.ondrop = document.body.ondragover = null;
+      return result;
+    } catch (error) {
+      console.error(error);
+      $('create').hidden = false;
+      loadStatus(`${error.message} Try another photo.`, 0);
+    }
+  }
+}
+let photoResult = null;
+const mesh = config.custom ? new SplatMesh({
+  enableLod: false,
+  constructSplats: async splats => { photoResult = await createFromPhoto(splats); },
+}) : new SplatMesh({
   url: config.asset, enableLod: false,
   onProgress(event) {
     if (event.lengthComputable && event.total) {
@@ -182,15 +228,18 @@ const mesh = new SplatMesh({
     }
   },
 });
-mesh.rotation.x = Math.PI;
+if (!config.custom) mesh.rotation.x = Math.PI;
 mesh.maxSh = 3;
 mesh.objectModifier = evidenceModifier;
 scene.add(mesh);
 
 async function loadEvidence() {
-  const response = await fetch(config.evidence);
-  if (!response.ok) throw new Error(`Evidence unavailable: ${response.status}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  let bytes = photoResult?.evidence;
+  if (!bytes) {
+    const response = await fetch(config.evidence);
+    if (!response.ok) throw new Error(`Evidence unavailable: ${response.status}`);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  }
   const texels = Math.ceil(bytes.length / 4);
   const height = Math.ceil(texels / EVIDENCE_WIDTH);
   const data = new Uint8Array(EVIDENCE_WIDTH * height * 4);
@@ -220,6 +269,7 @@ mesh.initialized.then(async () => {
   $('count').textContent = `${fullCount.toLocaleString()} stored`;
   $('budget').disabled = false;
   updateBudgetUI();
+  if (photoResult) toast(`Depth estimated by AI on ${photoResult.device} in ${photoResult.inferenceSeconds.toFixed(1)} s · ${fullCount.toLocaleString()} Gaussians. Press Play to look around.`);
   try {
     await loadEvidence();
     $('lens').disabled = false;
@@ -282,7 +332,9 @@ function updateBudgetUI() {
     ? (budgetPercent === 100 ? quality.full : quality.ranked?.[budgetPercent]) : null;
   $('psnr').textContent = measured ? `${measured.psnr.toFixed(1)} dB` : '—';
   $('psnr').title = measured && quality ? `Mean over held-out test panoramas; full scene ${quality.full.psnr.toFixed(2)} dB, SSIM ${measured.ssim.toFixed(3)}, LPIPS ${measured.lpips.toFixed(3)}` : 'Not measured for this setting';
-  $('method-note').textContent = 'Draws the Gaussians with the largest visual contribution first, so lower-end devices keep the structure of the room.';
+  $('method-note').textContent = config.custom
+    ? 'Draws a coarse, even lattice of the photo first and fills in detail as the budget grows.'
+    : 'Draws the Gaussians with the largest visual contribution first, so lower-end devices keep the structure of the room.';
 }
 function applyBudget() {
   const limit = Math.floor(fullCount * budgetPercent / 100);

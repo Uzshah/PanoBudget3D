@@ -35,3 +35,11 @@ kbd { font:10px ui-monospace,monospace; border:1px solid #c4d3b74a; border-radiu
 .metrics dd { margin:3px 0 0; font-size:13px; font-weight:550; font-variant-numeric:tabular-nums; }
 @media(max-width:900px) { #lab { top:auto; bottom:128px; left:10px; width:min(300px,calc(100% - 20px)); max-height:calc(100vh - 250px); } }
 @media(max-width:600px) { #lab { bottom:112px; } }
+
+#create { max-width:440px; text-align:center; margin-top:18px; }
+#create p { font-size:13px; line-height:1.6; color:#c4cfbd; }
+.create-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin:16px 0 4px; }
+.file-button { display:inline-flex; align-items:center; border-radius:9px; padding:10px 15px; cursor:pointer; }
+.file-button input { position:absolute; width:1px; height:1px; opacity:0; }
+.file-button:focus-within { outline:2px solid #e2f2b8; outline-offset:3px; }
+#create .create-hint { font-size:11px; color:#9aaa91; }
