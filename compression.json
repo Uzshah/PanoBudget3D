@@ -28,5 +28,15 @@
     "position_fractional_bits": 16,
     "spz_version": 2,
     "sha256": "0bd4b3c42fe1396916be3955a088584befedbb0c54fe5037eb98857f1a09098c"
+  },
+  {
+    "asset": "office_2_c6_full.spz",
+    "original_bytes": 148498723,
+    "compressed_bytes": 15416418,
+    "gaussians": 598779,
+    "sh_degree": 3,
+    "position_fractional_bits": 16,
+    "spz_version": 2,
+    "sha256": "530c9b0b4cc8fd026ee6b4772fd15280b9fb9e03a8cbaf2d21b76b3e6e74d355"
   }
 ]

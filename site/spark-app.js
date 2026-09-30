@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {SparkRenderer, SplatMesh, SparkControls} from '@sparkjsdev/spark';
+import {SparkRenderer, SplatMesh, SparkControls, dyno} from '@sparkjsdev/spark';
 
 const $ = id => document.getElementById(id);
 const requestedScene = new URLSearchParams(location.search).get('scene') || 'hotel_0';
@@ -123,6 +123,54 @@ function sampleTour(amount) {
 applyPose(opening);
 updateTourUI();
 
+// Splats are stored in descending visual contribution, so a budget of k keeps
+// indices below k. The evidence texture packs one confidence byte per splat,
+// four splats per RGBA texel, in the same order.
+const BUDGET_STOPS = [10, 25, 50, 75, 100];
+const budgetCount = dyno.dynoInt(0x7fffffff);
+const lensAmount = dyno.dynoFloat(0);
+const minConfidence = dyno.dynoFloat(0);
+const EVIDENCE_WIDTH = 4096;
+const evidenceTexture = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAIntegerFormat, THREE.UnsignedByteType);
+evidenceTexture.internalFormat = 'RGBA8UI';
+evidenceTexture.needsUpdate = true;
+const evidenceSampler = dyno.dynoUsampler2D(evidenceTexture);
+const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsplat}, ({gsplat}) => {
+  const block = new dyno.Dyno({
+    inTypes: {gsplat: dyno.Gsplat, count: 'int', lens: 'float', minConf: 'float', evidence: 'usampler2D'},
+    outTypes: {gsplat: dyno.Gsplat},
+    inputs: {gsplat, count: budgetCount, lens: lensAmount, minConf: minConfidence, evidence: evidenceSampler},
+    globals: () => [`
+      vec3 panobudgetEvidenceRamp(float t) {
+        vec3 a = vec3(0.878, 0.267, 0.361), b = vec3(0.941, 0.541, 0.294), c = vec3(0.949, 0.820, 0.361);
+        vec3 d = vec3(0.345, 0.776, 0.635), e = vec3(0.227, 0.651, 0.851);
+        if (t < 0.3) return mix(a, b, t / 0.3);
+        if (t < 0.55) return mix(b, c, (t - 0.3) / 0.25);
+        if (t < 0.8) return mix(c, d, (t - 0.55) / 0.25);
+        return mix(d, e, (t - 0.8) / 0.2);
+      }
+    `],
+    statements: ({inputs, outputs}) => [
+      `${outputs.gsplat} = ${inputs.gsplat};`,
+      `int splatIndex = ${outputs.gsplat}.index;`,
+      `if (splatIndex >= ${inputs.count}) {`,
+      `  ${outputs.gsplat}.flags = 0u; ${outputs.gsplat}.rgba.a = 0.0;`,
+      `} else if (${inputs.lens} > 0.0 || ${inputs.minConf} > 0.0) {`,
+      `  uvec4 packedEvidence = texelFetch(${inputs.evidence}, ivec2((splatIndex >> 2) % ${EVIDENCE_WIDTH}, (splatIndex >> 2) / ${EVIDENCE_WIDTH}), 0);`,
+      `  float confidence = float(packedEvidence[splatIndex & 3]) / 255.0;`,
+      `  if (confidence < ${inputs.minConf}) { ${outputs.gsplat}.flags = 0u; ${outputs.gsplat}.rgba.a = 0.0; }`,
+      `  vec3 heat = panobudgetEvidenceRamp(clamp((confidence - 0.08) / 0.42, 0.0, 1.0));`,
+      `  ${outputs.gsplat}.rgba.rgb = mix(${outputs.gsplat}.rgba.rgb, heat, ${inputs.lens});`,
+      `}`,
+    ],
+  });
+  return {gsplat: block.outputs.gsplat};
+});
+let evidence = null, evidenceHistogramCache = null;
+let method = 'ranked', budgetPercent = 100, lensTarget = 0;
+let quality = null;
+fetch('quality.json').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
+
 const mesh = new SplatMesh({
   url: config.asset, enableLod: false,
   onProgress(event) {
@@ -136,7 +184,28 @@ const mesh = new SplatMesh({
 });
 mesh.rotation.x = Math.PI;
 mesh.maxSh = 3;
+mesh.objectModifier = evidenceModifier;
 scene.add(mesh);
+
+async function loadEvidence() {
+  const response = await fetch(config.evidence);
+  if (!response.ok) throw new Error(`Evidence unavailable: ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const texels = Math.ceil(bytes.length / 4);
+  const height = Math.ceil(texels / EVIDENCE_WIDTH);
+  const data = new Uint8Array(EVIDENCE_WIDTH * height * 4);
+  data.set(bytes);
+  evidenceTexture.image = {data, width: EVIDENCE_WIDTH, height};
+  evidenceTexture.needsUpdate = true;
+  evidence = bytes;
+}
+function hiddenBelow(threshold, limit) {
+  if (!evidence || threshold <= 0) return 0;
+  const cut = Math.ceil(threshold * 255);
+  let hidden = 0;
+  for (let i = 0; i < limit; i++) if (evidence[i] < cut) hidden++;
+  return hidden;
+}
 
 mesh.initialized.then(async () => {
   fullCount = mesh.numSplats;
@@ -144,10 +213,20 @@ mesh.initialized.then(async () => {
   $('loading').classList.add('done');
   for (const id of ['play', 'restart', 'timeline']) $(id).disabled = false;
   $('count').textContent = `${fullCount.toLocaleString()} stored`;
+  $('budget').disabled = false;
+  $('method-ranked').disabled = false;
+  updateBudgetUI();
+  try {
+    await loadEvidence();
+    $('lens').disabled = false;
+    $('trust').disabled = false;
+    mesh.updateVersion();
+    updateTrustUI();
+  } catch (error) { console.warn(error); $('trust-stat').textContent = 'Evidence data could not load.'; }
   try {
     await mesh.createLodSplats();
-    $('budget').disabled = false;
-  } catch (error) { console.warn(error); toast('Full quality is ready. Reduced-budget preview is unavailable.'); }
+    $('method-lod').disabled = false;
+  } catch (error) { console.warn(error); }
 }).catch(error => {
   $('load-detail').textContent = `Scene could not load: ${error.message}`;
   console.error(error);
@@ -165,6 +244,7 @@ canvas.addEventListener('pointerdown', pause);
 canvas.addEventListener('wheel', pause, {passive: true});
 window.addEventListener('keydown', event => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+  if (event.code === 'KeyL' && !$('lens').disabled) { setLens(lensTarget === 0); return; }
   if (['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code)) pause();
 });
 $('settings-toggle').onclick = () => {
@@ -190,12 +270,84 @@ $('tour-file').onchange = async event => {
   catch (error) { toast(error.message); }
   event.target.value = '';
 };
-$('budget').onchange = () => {
-  const fraction = Number($('budget').value) / 100;
-  spark.lodSplatCount = Math.floor(fullCount * fraction);
-  mesh.enableLod = fraction < 1;
-  mesh.updateGenerator();
+function drawnCount() {
+  const limit = Math.floor(fullCount * budgetPercent / 100);
+  if (method === 'lod') return limit;
+  return limit - hiddenBelow(minConfidence.value, limit);
+}
+function updateBudgetUI() {
+  $('budget-label').textContent = `${budgetPercent}%`;
+  $('budget').setAttribute('aria-valuetext', `${budgetPercent}% of Gaussians`);
+  $('method-ranked').setAttribute('aria-checked', String(method === 'ranked'));
+  $('method-lod').setAttribute('aria-checked', String(method === 'lod'));
+  if (fullCount) $('drawn').textContent = drawnCount().toLocaleString();
+  const measured = method === 'ranked' && minConfidence.value === 0 && quality
+    ? (budgetPercent === 100 ? quality.full : quality.ranked?.[budgetPercent]) : null;
+  $('psnr').textContent = measured ? `${measured.psnr.toFixed(1)} dB` : '—';
+  $('psnr').title = measured && quality ? `Mean over held-out test panoramas; full scene ${quality.full.psnr.toFixed(2)} dB, SSIM ${measured.ssim.toFixed(3)}, LPIPS ${measured.lpips.toFixed(3)}` : 'Not measured for this setting';
+  $('method-note').textContent = method === 'ranked'
+    ? 'Keeps the Gaussians with the largest visual contribution (opacity × area). The download is unchanged; the GPU sorts and draws fewer splats.'
+    : "Spark's view-dependent level of detail, shown for comparison. The evidence lens is paused in this mode.";
+}
+function applyBudget() {
+  const limit = Math.floor(fullCount * budgetPercent / 100);
+  if (method === 'ranked') {
+    budgetCount.value = budgetPercent >= 100 ? 0x7fffffff : limit;
+    if (mesh.enableLod) { mesh.enableLod = false; mesh.updateGenerator(); }
+  } else {
+    budgetCount.value = 0x7fffffff;
+    spark.lodSplatCount = limit;
+    mesh.enableLod = budgetPercent < 100;
+    mesh.updateGenerator();
+  }
+  mesh.updateVersion();
+  updateBudgetUI();
+  updateTrustUI();
+}
+function setMethod(next) {
+  if (next === method) return;
+  method = next;
+  if (method === 'lod') { setLens(false); minConfidence.value = 0; $('trust').value = '0'; }
+  $('lens').disabled = method === 'lod' || !evidence;
+  $('trust').disabled = method === 'lod' || !evidence;
+  applyBudget();
+}
+$('method-ranked').onclick = () => setMethod('ranked');
+$('method-lod').onclick = () => setMethod('lod');
+$('budget').oninput = () => { budgetPercent = BUDGET_STOPS[Number($('budget').value)]; if (method === 'ranked') applyBudget(); else updateBudgetUI(); };
+$('budget').onchange = () => { if (method === 'lod') applyBudget(); };
+function setLens(on) {
+  lensTarget = on ? 1 : 0;
+  $('lens').setAttribute('aria-checked', String(on));
+}
+$('lens').onclick = () => setLens(lensTarget === 0);
+function updateTrustUI() {
+  const threshold = minConfidence.value;
+  $('trust-label').textContent = threshold > 0 ? threshold.toFixed(2) : 'off';
+  if (!evidence) return;
+  const limit = method === 'ranked' ? Math.floor(fullCount * budgetPercent / 100) : fullCount;
+  const hidden = hiddenBelow(threshold, limit);
+  $('trust-stat').textContent = threshold > 0
+    ? `${hidden.toLocaleString()} low-confidence Gaussians hidden (${(100 * hidden / Math.max(1, limit)).toFixed(1)}%)`
+    : `Median confidence ${(medianConfidence() / 255).toFixed(2)} across ${fullCount.toLocaleString()} Gaussians`;
+  $('drawn').textContent = drawnCount().toLocaleString();
+}
+function medianConfidence() {
+  if (!evidenceHistogramCache) {
+    const histogram = new Uint32Array(256);
+    for (const value of evidence) histogram[value]++;
+    let total = 0, median = 0;
+    for (let v = 0; v < 256; v++) { total += histogram[v]; if (total >= evidence.length / 2) { median = v; break; } }
+    evidenceHistogramCache = median;
+  }
+  return evidenceHistogramCache;
+}
+$('trust').oninput = () => { minConfidence.value = Number($('trust').value); mesh.updateVersion(); updateTrustUI(); updateBudgetUI(); };
+$('lab-toggle').onclick = () => {
+  const collapsed = $('lab').classList.toggle('collapsed');
+  $('lab-toggle').setAttribute('aria-expanded', String(!collapsed));
 };
+if (matchMedia('(max-width: 600px)').matches) { $('lab').classList.add('collapsed'); $('lab-toggle').setAttribute('aria-expanded', 'false'); }
 $('fullscreen').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
@@ -209,18 +361,22 @@ renderer.setAnimationLoop(time => {
     if (progress >= 1) playing = false;
     updateTourUI();
   } else controls.update(camera);
+  if (lensAmount.value !== lensTarget) {
+    lensAmount.value = lensTarget > lensAmount.value ? Math.min(lensTarget, lensAmount.value + delta * 3) : Math.max(lensTarget, lensAmount.value - delta * 3);
+    mesh.updateVersion();
+  }
   renderer.render(scene, camera);
   frames++;
   if (time - lastStat >= 1000) {
-    $('fps').textContent = `${(frames * 1000 / (time - lastStat)).toFixed(1)} FPS`;
-    $('count').textContent = mesh.enableLod
-      ? `${mesh.numSplats.toLocaleString()} selected · ${fullCount.toLocaleString()} stored`
-      : `${fullCount.toLocaleString()} stored · full quality`;
+    $('fps').textContent = `${(frames * 1000 / (time - lastStat)).toFixed(0)} fps`;
+    $('count').textContent = ready ? `${fullCount.toLocaleString()} Gaussians stored · ${budgetPercent}% ${method === 'ranked' ? 'ranked' : 'Spark LoD'} budget` : 'Loading scene…';
     $('pose-readout').textContent = `Position ${camera.position.toArray().map(x => x.toFixed(3)).join(', ')} · Rotation ${camera.quaternion.toArray().map(x => x.toFixed(3)).join(', ')}`;
     frames = 0; lastStat = time;
   }
 });
 // Read-only status plus explicit camera setters for local visual verification.
-window.panobudget = {camera, mesh, spark, get ready() {return ready;}, get playing() {return playing;},
+window.panobudget = {camera, mesh, spark, get evidenceLoaded() {return !!evidence;}, setLens, setMethod,
+  setBudget(percent) {budgetPercent = percent; $('budget').value = String(BUDGET_STOPS.indexOf(percent)); applyBudget();},
+  setTrust(value) {$('trust').value = String(value); $('trust').oninput();}, get ready() {return ready;}, get playing() {return playing;},
   get tour() {return record();}, setProgress(value) {pause(); progress = THREE.MathUtils.clamp(value, 0, 1); sampleTour(progress); updateTourUI();},
   reset() {pause(); applyPose(opening);}, saveOpening() {opening = capturePose(); persist();}};

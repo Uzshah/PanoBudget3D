@@ -1,0 +1,70 @@
+{
+  "hotel_0": {
+    "source_checkpoint": "hotel_0_rand/point_cloud/iteration_1000/point_cloud.ply",
+    "gaussians": 396516,
+    "ranking": "descending sigmoid(opacity) x product of the two largest Gaussian scales",
+    "ranked_spz": "hotel_0_ranked.spz",
+    "ranked_spz_bytes": 9997059,
+    "ranked_spz_sha256": "c34d9a6d24e21b59a19f87fe33f3dda709ebde184926c677ce16ebd42b37cd22",
+    "evidence": "hotel_0_evidence.bin",
+    "evidence_field": "u_confidence x 255",
+    "confidence_percentiles": {
+      "5": 0.08824274688959122,
+      "25": 0.22180110216140747,
+      "50": 0.29395344853401184,
+      "75": 0.3459501266479492,
+      "95": 0.42594289779663086
+    }
+  },
+  "room_0": {
+    "source_checkpoint": "room_0_rand/point_cloud/iteration_1000/point_cloud.ply",
+    "gaussians": 1011580,
+    "ranking": "descending sigmoid(opacity) x product of the two largest Gaussian scales",
+    "ranked_spz": "room_0_ranked.spz",
+    "ranked_spz_bytes": 27836338,
+    "ranked_spz_sha256": "3b6e833f52c4491df2783758160443198f88fbd12d376c3289797a9def1a5888",
+    "evidence": "room_0_evidence.bin",
+    "evidence_field": "u_confidence x 255",
+    "confidence_percentiles": {
+      "5": 0.1189550831913948,
+      "25": 0.2530409097671509,
+      "50": 0.3211452066898346,
+      "75": 0.37673425674438477,
+      "95": 0.4506289064884186
+    }
+  },
+  "apartment_0": {
+    "source_checkpoint": "apartment_0_rand/point_cloud/iteration_1000/point_cloud.ply",
+    "gaussians": 425926,
+    "ranking": "descending sigmoid(opacity) x product of the two largest Gaussian scales",
+    "ranked_spz": "apartment_0_ranked.spz",
+    "ranked_spz_bytes": 10920379,
+    "ranked_spz_sha256": "e8266abc4ef37df11f189f3765e4e0ba8919af5ccb5eceea9529881513296d11",
+    "evidence": "apartment_0_evidence.bin",
+    "evidence_field": "u_confidence x 255",
+    "confidence_percentiles": {
+      "5": 0.07065551728010178,
+      "25": 0.13331323862075806,
+      "50": 0.25953343510627747,
+      "75": 0.3396197706460953,
+      "95": 0.42763403058052063
+    }
+  },
+  "office_2": {
+    "source_checkpoint": "office_2_rand/point_cloud/iteration_1000/point_cloud.ply",
+    "gaussians": 598779,
+    "ranking": "descending sigmoid(opacity) x product of the two largest Gaussian scales",
+    "ranked_spz": "office_2_ranked.spz",
+    "ranked_spz_bytes": 15312623,
+    "ranked_spz_sha256": "5d092b0dc9a54e97363757aca87cdf3350231df1e1ea9dbfc3439faa01b499bc",
+    "evidence": "office_2_evidence.bin",
+    "evidence_field": "u_confidence x 255",
+    "confidence_percentiles": {
+      "5": 0.08907767087221147,
+      "25": 0.19001535326242447,
+      "50": 0.2656649053096771,
+      "75": 0.3327406495809555,
+      "95": 0.4185798466205597
+    }
+  }
+}

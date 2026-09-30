@@ -20,5 +20,17 @@
       "central_viewport_psnr_vs_ply_db": 37.23852789980149,
       "mean_absolute_rgb_difference_0_to_255": 2.401398711622807
     }
+  ],
+  "additional_scenes": [
+    {
+      "scene": "office_2",
+      "loads": true,
+      "tour_playback": true,
+      "separate_saved_camera_storage": true,
+      "gaussians": 598779,
+      "sh_degree": 3,
+      "javascript_errors": [],
+      "note": "SPZ header, browser loading and camera controls verified. No PLY-versus-SPZ pixel comparison was performed for this additional scene."
+    }
   ]
 }
