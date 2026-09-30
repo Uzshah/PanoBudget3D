@@ -8,9 +8,9 @@
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/postprocessing/Pass.js":"./vendor/Pass.js","@sparkjsdev/spark":"./vendor/spark.module.js"}}</script>
 </head>
 <body>
-  <canvas id="scene" aria-label="Interactive C6 hotel Gaussian scene"></canvas>
+  <canvas id="scene" aria-label="Interactive Gaussian scene"></canvas>
   <header><div><span class="eyebrow">FROM PANORAMAS TO PRESENCE</span><h1>PanoBudget3D<span id="scene-name"> / Hotel 0</span></h1></div><label class="scene-select">Explore <select id="scene-picker" aria-label="Choose a scene"><option value="hotel_0">Hotel 0</option><option value="room_0">Room 0</option><option value="apartment_0">Apartment 0</option><option value="office_2">Office 2</option></select></label><button id="settings-toggle" aria-expanded="false" aria-controls="settings">Studio controls</button></header>
-  <div id="loading" role="status"><div class="loader-mark">P</div><h2>Step inside.</h2><p id="load-detail">Loading the full C6 scene with view-dependent appearance…</p><progress id="load-progress" max="1"></progress></div>
+  <div id="loading" role="status"><div class="loader-mark">P</div><h2>Step inside.</h2><p id="load-detail">Loading the scene…</p><progress id="load-progress" max="1"></progress></div>
   <aside id="settings" hidden>
     <div class="eyebrow">YOUR VIEW. YOUR TOUR.</div><h2>Camera studio</h2>
     <p>Drag to look. W/A/S/D to move. Q/E to roll. Shift moves faster.</p>
@@ -19,7 +19,7 @@
     <label for="duration">Tour duration <output id="duration-label">42 s</output></label><input id="duration" type="range" min="15" max="120" value="42" step="1">
     <label for="fov">Field of view <output id="fov-label">70°</output></label><input id="fov" type="range" min="45" max="95" value="70" step="1">
     <p id="stop-count">7 camera stops</p><output id="pose-readout"></output>
-    <details><summary>About the scene and budgets</summary><p>Current C6-PI-SR scene, trained for 29k chart updates plus 1k ERP refinement. Full mode preserves degree-three spherical harmonics. Ranked budgets draw the Gaussians with the largest visual contribution first (opacity × area); their held-out PSNR is measured offline. Spark LoD is shown for comparison and credited to Spark. The evidence lens displays the per-Gaussian reliability proxy computed during reconstruction; it is not a calibrated probability. The initial path uses training-camera positions.</p><p>Renderer: <a href="https://sparkjs.dev/" target="_blank" rel="noreferrer">Spark 2.3.0</a> with Three.js 0.180.0. Replica research asset. Browser FPS is measured locally and is not the paper's CUDA speed benchmark.</p></details>
+    <details><summary>About</summary><p>Built with <a href="https://sparkjs.dev/" target="_blank" rel="noreferrer">Spark 2.3.0</a> and Three.js 0.180.0. Scenes from the Replica dataset (research use).</p></details>
   </aside>
   <div id="toast" role="status" aria-live="polite"></div>
   <aside id="lab" aria-label="AI evidence and render budget">
@@ -35,9 +35,6 @@
       </div>
       <div class="lab-section">
         <div class="lab-title"><h3>Render budget</h3></div>
-        <div class="seg" role="radiogroup" aria-label="Budget method">
-          <button id="method-ranked" role="radio" aria-checked="true" disabled>Ranked</button><button id="method-lod" role="radio" aria-checked="false" disabled>Spark LoD</button>
-        </div>
         <label for="budget">Gaussians drawn <output id="budget-label">100%</output></label>
         <input id="budget" type="range" min="0" max="4" step="1" value="4" disabled aria-valuetext="100%">
         <div class="ticks" aria-hidden="true"><span>10</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
@@ -52,7 +49,7 @@
   </aside>
   <footer>
     <div class="tour-row"><button id="play" class="primary" disabled>Play guided tour</button><button id="restart" title="Restart tour" disabled>↺</button><input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Tour position" disabled><output id="tour-time">0:00 / 0:42</output><button id="fullscreen" title="Fullscreen">⛶</button></div>
-    <div class="status-row"><span><i class="status-dot"></i> C6 · full appearance · degree-3 SH</span><span id="count">Loading scene…</span></div>
+    <div class="status-row"><span><i class="status-dot"></i> Full view-dependent color</span><span id="count">Loading scene…</span></div>
   </footer>
   <script src="scene_data.js"></script><script type="module" src="spark-app.js"></script>
 </body>

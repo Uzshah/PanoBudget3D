@@ -9,7 +9,7 @@ const storageKey = config.storageKey;
 $('scene-picker').value = sceneKey;
 $('scene-name').textContent = ` / ${config.label}`;
 document.title = `PanoBudget3D · ${config.label} tour`;
-$('scene').setAttribute('aria-label', `Interactive C6 ${config.label} Gaussian scene`);
+$('scene').setAttribute('aria-label', `Interactive ${config.label} Gaussian scene`);
 $('scene-picker').onchange = () => {
   const url = new URL(location.href);
   url.search = ''; url.hash = '';
@@ -167,7 +167,7 @@ const evidenceModifier = dyno.dynoBlock({gsplat: dyno.Gsplat}, {gsplat: dyno.Gsp
   return {gsplat: block.outputs.gsplat};
 });
 let evidence = null, evidenceHistogramCache = null;
-let method = 'ranked', budgetPercent = 100, lensTarget = 0;
+let budgetPercent = 100, lensTarget = 0;
 let quality = null;
 fetch('quality.json').then(r => r.ok ? r.json() : null).then(data => { quality = data?.scenes?.[sceneKey] ?? null; updateBudgetUI(); }).catch(() => {});
 
@@ -177,7 +177,7 @@ const mesh = new SplatMesh({
     if (event.lengthComputable && event.total) {
       $('load-progress').value = event.loaded / event.total;
       $('load-detail').textContent = event.loaded < event.total
-        ? `Loading original C6 model · ${Math.round(event.loaded / event.total * 100)}%`
+        ? `Loading scene · ${Math.round(event.loaded / event.total * 100)}%`
         : 'Preparing Gaussian geometry and view-dependent appearance…';
     }
   },
@@ -214,7 +214,6 @@ mesh.initialized.then(async () => {
   for (const id of ['play', 'restart', 'timeline']) $(id).disabled = false;
   $('count').textContent = `${fullCount.toLocaleString()} stored`;
   $('budget').disabled = false;
-  $('method-ranked').disabled = false;
   updateBudgetUI();
   try {
     await loadEvidence();
@@ -223,10 +222,6 @@ mesh.initialized.then(async () => {
     mesh.updateVersion();
     updateTrustUI();
   } catch (error) { console.warn(error); $('trust-stat').textContent = 'Evidence data could not load.'; }
-  try {
-    await mesh.createLodSplats();
-    $('method-lod').disabled = false;
-  } catch (error) { console.warn(error); }
 }).catch(error => {
   $('load-detail').textContent = `Scene could not load: ${error.message}`;
   console.error(error);
@@ -272,50 +267,26 @@ $('tour-file').onchange = async event => {
 };
 function drawnCount() {
   const limit = Math.floor(fullCount * budgetPercent / 100);
-  if (method === 'lod') return limit;
   return limit - hiddenBelow(minConfidence.value, limit);
 }
 function updateBudgetUI() {
   $('budget-label').textContent = `${budgetPercent}%`;
   $('budget').setAttribute('aria-valuetext', `${budgetPercent}% of Gaussians`);
-  $('method-ranked').setAttribute('aria-checked', String(method === 'ranked'));
-  $('method-lod').setAttribute('aria-checked', String(method === 'lod'));
   if (fullCount) $('drawn').textContent = drawnCount().toLocaleString();
-  const measured = method === 'ranked' && minConfidence.value === 0 && quality
+  const measured = minConfidence.value === 0 && quality
     ? (budgetPercent === 100 ? quality.full : quality.ranked?.[budgetPercent]) : null;
   $('psnr').textContent = measured ? `${measured.psnr.toFixed(1)} dB` : '—';
   $('psnr').title = measured && quality ? `Mean over held-out test panoramas; full scene ${quality.full.psnr.toFixed(2)} dB, SSIM ${measured.ssim.toFixed(3)}, LPIPS ${measured.lpips.toFixed(3)}` : 'Not measured for this setting';
-  $('method-note').textContent = method === 'ranked'
-    ? 'Keeps the Gaussians with the largest visual contribution (opacity × area). The download is unchanged; the GPU sorts and draws fewer splats.'
-    : "Spark's view-dependent level of detail, shown for comparison. The evidence lens is paused in this mode.";
+  $('method-note').textContent = 'Draws the Gaussians with the largest visual contribution first, so lower-end devices keep the structure of the room.';
 }
 function applyBudget() {
   const limit = Math.floor(fullCount * budgetPercent / 100);
-  if (method === 'ranked') {
-    budgetCount.value = budgetPercent >= 100 ? 0x7fffffff : limit;
-    if (mesh.enableLod) { mesh.enableLod = false; mesh.updateGenerator(); }
-  } else {
-    budgetCount.value = 0x7fffffff;
-    spark.lodSplatCount = limit;
-    mesh.enableLod = budgetPercent < 100;
-    mesh.updateGenerator();
-  }
+  budgetCount.value = budgetPercent >= 100 ? 0x7fffffff : limit;
   mesh.updateVersion();
   updateBudgetUI();
   updateTrustUI();
 }
-function setMethod(next) {
-  if (next === method) return;
-  method = next;
-  if (method === 'lod') { setLens(false); minConfidence.value = 0; $('trust').value = '0'; }
-  $('lens').disabled = method === 'lod' || !evidence;
-  $('trust').disabled = method === 'lod' || !evidence;
-  applyBudget();
-}
-$('method-ranked').onclick = () => setMethod('ranked');
-$('method-lod').onclick = () => setMethod('lod');
-$('budget').oninput = () => { budgetPercent = BUDGET_STOPS[Number($('budget').value)]; if (method === 'ranked') applyBudget(); else updateBudgetUI(); };
-$('budget').onchange = () => { if (method === 'lod') applyBudget(); };
+$('budget').oninput = () => { budgetPercent = BUDGET_STOPS[Number($('budget').value)]; applyBudget(); };
 function setLens(on) {
   lensTarget = on ? 1 : 0;
   $('lens').setAttribute('aria-checked', String(on));
@@ -325,7 +296,7 @@ function updateTrustUI() {
   const threshold = minConfidence.value;
   $('trust-label').textContent = threshold > 0 ? threshold.toFixed(2) : 'off';
   if (!evidence) return;
-  const limit = method === 'ranked' ? Math.floor(fullCount * budgetPercent / 100) : fullCount;
+  const limit = Math.floor(fullCount * budgetPercent / 100);
   const hidden = hiddenBelow(threshold, limit);
   $('trust-stat').textContent = threshold > 0
     ? `${hidden.toLocaleString()} low-confidence Gaussians hidden (${(100 * hidden / Math.max(1, limit)).toFixed(1)}%)`
@@ -369,13 +340,13 @@ renderer.setAnimationLoop(time => {
   frames++;
   if (time - lastStat >= 1000) {
     $('fps').textContent = `${(frames * 1000 / (time - lastStat)).toFixed(0)} fps`;
-    $('count').textContent = ready ? `${fullCount.toLocaleString()} Gaussians stored · ${budgetPercent}% ${method === 'ranked' ? 'ranked' : 'Spark LoD'} budget` : 'Loading scene…';
+    $('count').textContent = ready ? `${fullCount.toLocaleString()} Gaussians stored · ${budgetPercent}% render budget` : 'Loading scene…';
     $('pose-readout').textContent = `Position ${camera.position.toArray().map(x => x.toFixed(3)).join(', ')} · Rotation ${camera.quaternion.toArray().map(x => x.toFixed(3)).join(', ')}`;
     frames = 0; lastStat = time;
   }
 });
 // Read-only status plus explicit camera setters for local visual verification.
-window.panobudget = {camera, mesh, spark, get evidenceLoaded() {return !!evidence;}, setLens, setMethod,
+window.panobudget = {camera, mesh, spark, get evidenceLoaded() {return !!evidence;}, setLens,
   setBudget(percent) {budgetPercent = percent; $('budget').value = String(BUDGET_STOPS.indexOf(percent)); applyBudget();},
   setTrust(value) {$('trust').value = String(value); $('trust').oninput();}, get ready() {return ready;}, get playing() {return playing;},
   get tour() {return record();}, setProgress(value) {pause(); progress = THREE.MathUtils.clamp(value, 0, 1); sampleTour(progress); updateTourUI();},

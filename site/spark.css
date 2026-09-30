@@ -28,9 +28,6 @@ kbd { font:10px ui-monospace,monospace; border:1px solid #c4d3b74a; border-radiu
 .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 .legend { display:flex; align-items:center; gap:8px; font-size:10.5px; color:#c4cfbd; }
 .ramp { flex:1; height:8px; border-radius:4px; background:linear-gradient(90deg,#e0445c,#f08a4b 30%,#f2d15c 55%,#58c6a2 80%,#3aa6d9); }
-.seg { display:grid; grid-template-columns:1fr 1fr; margin-top:10px; border:1px solid #c4d3b738; border-radius:9px; overflow:hidden; }
-.seg button { border:0; border-radius:0; padding:8px; font-size:12px; background:transparent; }
-.seg button[aria-checked=true] { background:#e3efc6; color:#203118; font-weight:600; }
 .ticks { display:flex; justify-content:space-between; font-size:9.5px; color:#9aaa91; padding:0 2px; }
 .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:12px 0 4px; }
 .metrics div { background:#1a241a; border-radius:9px; padding:8px; }
